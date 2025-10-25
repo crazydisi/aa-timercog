@@ -1,0 +1,5 @@
+allianceauth>=4.0.0
+allianceauth-discordbot>=3.0.0
+aa-structuretimers>=1.0.0
+py-cord>=2.0.0
+django-eveuniverse>=2.0.0

@@ -1,0 +1,25 @@
+[flake8]
+max-line-length = 100
+max-complexity = 10
+exclude =
+    .git,
+    __pycache__,
+    build,
+    dist,
+    .eggs,
+    *.egg-info,
+    .tox,
+    .venv,
+    venv,
+    migrations
+ignore =
+    # W503: line break before binary operator (conflicts with black)
+    W503,
+    # E203: whitespace before ':' (conflicts with black)
+    E203,
+    # F722: syntax error in forward annotation (false positive with discord.py)
+    F722,
+    # F821: undefined name (false positive with discord.py Option defaults)
+    F821,
+per-file-ignores =
+    __init__.py:F401

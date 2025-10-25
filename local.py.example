@@ -1,0 +1,29 @@
+# AA Timer Cog Configuration
+# Add these lines to your Alliance Auth local.py file
+
+# ============================================
+# Timer Cog Settings
+# ============================================
+
+# Discord Role IDs that are allowed to use the /timer add command
+# To get role IDs: Enable Developer Mode in Discord > Right-click role > Copy ID
+TIMERCOG_ALLOWED_ROLE_IDS = [
+    # Example role IDs (replace with your actual role IDs):
+    # 123456789012345678,  # FC Role
+    # 234567890123456789,  # Director Role
+    # 345678901234567890,  # Timer Manager Role
+]
+
+# Discord Channel IDs where the command can be used (optional)
+# If not set or empty list, the command will work in all channels
+# To get channel IDs: Enable Developer Mode in Discord > Right-click channel > Copy ID
+TIMERCOG_ALLOWED_CHANNELS = [
+    # Example channel IDs (replace with your actual channel IDs):
+    # 456789012345678901,  # #timer-management
+    # 567890123456789012,  # #fc-commands
+]
+
+# Note: If you don't want to restrict by roles or channels, 
+# you can leave the lists empty or comment them out:
+# TIMERCOG_ALLOWED_ROLE_IDS = []
+# TIMERCOG_ALLOWED_CHANNELS = []
