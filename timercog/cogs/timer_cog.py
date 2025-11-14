@@ -629,12 +629,6 @@ class TimerCog(commands.Cog):
             description="Paste EVE reinforcement text from target window",
             required=True,
         ),
-        system: Option(
-            str,
-            description="Solar system where the structure is located",
-            required=True,
-            autocomplete=solar_system_autocomplete,
-        ),
         structure_type: Option(
             str,
             description="Type of structure (e.g., Astrahus, Fortizar, Keepstar)",
@@ -764,9 +758,57 @@ class TimerCog(commands.Cog):
                 return
 
             # Parse the EVE text
-            # Extract structure name (first line)
+            # Extract first line which contains: "SYSTEM - ... - Structure Name"
             lines = eve_text.strip().split("\n")
-            structure_name = lines[0].strip() if lines else ""
+            first_line = lines[0].strip() if lines else ""
+
+            if not first_line:
+                await ctx.respond(
+                    "❌ Empty EVE text provided. Please paste the reinforcement text.",
+                    ephemeral=True,
+                )
+                return
+
+            # Extract system name from the first part (before " - " separator)
+            # Example: "6U-MFQ - NF - Fort Enterprise" -> system: "6U-MFQ", rest: "NF - Fort Enterprise"
+            # Example: "M-NP5O - VIII - 3 - For Sale" -> system: "M-NP5O", rest: "VIII - 3 - For Sale"
+            # Split by " - " (space-dash-space) to preserve system names with dashes like "6U-MFQ"
+            parts = first_line.split(" - ", 1)
+            extracted_system = parts[0].strip() if parts else first_line
+
+            # Use the extracted system name
+            system_to_use = extracted_system
+
+            # Validate the solar system against the database
+            solar_system = None
+            try:
+                solar_system = EveSolarSystem.objects.get(name__iexact=system_to_use)
+            except EveSolarSystem.DoesNotExist:
+                # Try fuzzy match
+                systems = EveSolarSystem.objects.filter(name__icontains=system_to_use)[:5]
+                if systems.exists():
+                    system_list = ", ".join([s.name for s in systems])
+                    await ctx.respond(
+                        f"❌ Solar system '{system_to_use}' not found. "
+                        f"Did you mean: {system_list}?\n\n"
+                        f"Extracted from text: `{extracted_system}`",
+                        ephemeral=True,
+                    )
+                else:
+                    await ctx.respond(
+                        f"❌ Solar system '{system_to_use}' not found. "
+                        "Please check the system name.\n\n"
+                        f"Extracted from text: `{extracted_system}`",
+                        ephemeral=True,
+                    )
+                return
+
+            # Remove system name from structure name
+            # If we found the system, remove it from the beginning of the first line
+            structure_name = first_line
+            if parts and len(parts) > 1 and solar_system.name.upper() == parts[0].strip().upper():
+                # Remove the system name and the dash from the structure name
+                structure_name = parts[1].strip()
 
             # Extract date/time from "Reinforced until YYYY.MM.DD HH:MM:SS" pattern
             # Pattern supports both dots and dashes in date
@@ -810,25 +852,6 @@ class TimerCog(commands.Cog):
                     f"⚠️ Warning: The parsed date ({date_str} UTC) is in the past!",
                     ephemeral=True,
                 )
-                return
-
-            # Look up the solar system using the provided system parameter
-            try:
-                solar_system = EveSolarSystem.objects.get(name__iexact=system)
-            except EveSolarSystem.DoesNotExist:
-                # Try fuzzy match
-                systems = EveSolarSystem.objects.filter(name__icontains=system)[:5]
-                if systems.exists():
-                    system_list = ", ".join([s.name for s in systems])
-                    await ctx.respond(
-                        f"❌ Solar system '{system}' not found. Did you mean: {system_list}?",
-                        ephemeral=True,
-                    )
-                else:
-                    await ctx.respond(
-                        f"❌ Solar system '{system}' not found. " "Please check the system name.",
-                        ephemeral=True,
-                    )
                 return
 
             # Validate and get structure type
