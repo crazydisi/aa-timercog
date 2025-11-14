@@ -516,12 +516,20 @@ class TimerCog(commands.Cog):
             start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-            # Query timers for this date range
+            # Query timers for this date range (exclude friendly timers)
             timers = (
                 Timer.objects.filter(date__gte=start_of_day, date__lte=end_of_day)
                 .select_related("eve_solar_system", "structure_type")
                 .order_by("date")
             )
+
+            # Filter out friendly timers (objective = 1)
+            # Check if the Timer model has an Objective enum
+            if hasattr(Timer, "Objective") and hasattr(Timer.Objective, "FRIENDLY"):
+                timers = timers.exclude(objective=Timer.Objective.FRIENDLY)
+            else:
+                # Fallback: assume friendly = 1
+                timers = timers.exclude(objective=1)
 
             if not timers.exists():
                 date_display = start_of_day.strftime("%Y.%m.%d")
