@@ -449,7 +449,10 @@ class TimerCog(commands.Cog):
         ctx,
         date: Option(
             str,
-            description="Date to show timers for (YYYY-MM-DD or YYYY.MM.DD format). Leave empty for today.",
+            description=(
+                "Date to show timers for (YYYY-MM-DD or YYYY.MM.DD format). "
+                "Leave empty for today."
+            ),
             required=False,
             default="",
         ),
@@ -498,7 +501,8 @@ class TimerCog(commands.Cog):
 
                 if not target_date:
                     await ctx.respond(
-                        "❌ Invalid date format. Please use YYYY-MM-DD or YYYY.MM.DD format (e.g., 2025-11-14 or 2025.11.14)",
+                        "❌ Invalid date format. Please use YYYY-MM-DD or YYYY.MM.DD "
+                        "format (e.g., 2025-11-14 or 2025.11.14)",
                         ephemeral=True,
                     )
                     return
@@ -511,13 +515,11 @@ class TimerCog(commands.Cog):
             end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
             # Query timers for this date range
-            timers = Timer.objects.filter(
-                date__gte=start_of_day,
-                date__lte=end_of_day
-            ).select_related(
-                'eve_solar_system',
-                'structure_type'
-            ).order_by('date')
+            timers = (
+                Timer.objects.filter(date__gte=start_of_day, date__lte=end_of_day)
+                .select_related("eve_solar_system", "structure_type")
+                .order_by("date")
+            )
 
             if not timers.exists():
                 date_display = start_of_day.strftime("%Y.%m.%d")
@@ -537,11 +539,14 @@ class TimerCog(commands.Cog):
 
                 # Get timer type if available
                 timer_type_display = ""
-                if hasattr(timer, 'timer_type') and timer.timer_type:
-                    if hasattr(Timer, 'Type'):
+                if hasattr(timer, "timer_type") and timer.timer_type:
+                    if hasattr(Timer, "Type"):
                         # Get the display value from choices
                         try:
-                            timer_type_display = f" - {dict(Timer.Type.choices).get(timer.timer_type, str(timer.timer_type))}"
+                            choice_value = dict(Timer.Type.choices).get(
+                                timer.timer_type, str(timer.timer_type)
+                            )
+                            timer_type_display = f" - {choice_value}"
                         except:
                             timer_type_display = f" - {timer.timer_type}"
                     else:
@@ -554,15 +559,19 @@ class TimerCog(commands.Cog):
 
                 # Format: Structure: System - Owner - Location -> Date Time or in X hours
                 # Convert to UTC (EVE Time) for display
-                timer_utc = timer.date.astimezone(dt_timezone.utc) if timer.date.tzinfo else timer.date
+                timer_utc = (
+                    timer.date.astimezone(dt_timezone.utc)
+                    if timer.date.tzinfo
+                    else timer.date
+                )
                 eve_time_str = timer_utc.strftime("%Y.%m.%d %H:%M:%S")
 
                 # Discord relative timestamp (shows in user's local timezone automatically)
                 timestamp_rel = f"<t:{int(timer.date.timestamp())}:R>"
 
                 output_lines.append(
-                    f"**{structure_name}**: {timer.eve_solar_system.name}{timer_type_display} -> "
-                    f"{eve_time_str} ET or {timestamp_rel}"
+                    f"**{structure_name}**: {timer.eve_solar_system.name}"
+                    f"{timer_type_display} -> {eve_time_str} ET or {timestamp_rel}"
                 )
 
                 if location_info:
