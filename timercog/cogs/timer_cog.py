@@ -494,7 +494,9 @@ class TimerCog(commands.Cog):
                 for date_format in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"]:
                     try:
                         parsed = datetime.strptime(date_str, date_format)
-                        target_date = timezone.make_aware(parsed, timezone.get_current_timezone())
+                        target_date = timezone.make_aware(
+                            parsed, timezone.get_current_timezone()
+                        )
                         break
                     except ValueError:
                         continue
@@ -511,8 +513,12 @@ class TimerCog(commands.Cog):
                 target_date = timezone.now()
 
             # Get start and end of the target day
-            start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            start_of_day = target_date.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            end_of_day = target_date.replace(
+                hour=23, minute=59, second=59, microsecond=999999
+            )
 
             # Query timers for this date range
             timers = (
@@ -535,7 +541,9 @@ class TimerCog(commands.Cog):
 
             for timer in timers:
                 # Get structure type name
-                structure_name = timer.structure_type.name if timer.structure_type else "Unknown"
+                structure_name = (
+                    timer.structure_type.name if timer.structure_type else "Unknown"
+                )
 
                 # Get timer type if available
                 timer_type_display = ""
