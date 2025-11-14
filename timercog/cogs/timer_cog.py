@@ -4,6 +4,7 @@ Fixed version with improved error handling and authentication
 """
 
 import logging
+import re
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 from typing import Optional
@@ -609,6 +610,313 @@ class TimerCog(commands.Cog):
             logger.error(f"Error listing timers: {e}", exc_info=True)
             await ctx.respond(
                 f"❌ An error occurred while listing timers: {str(e)}", ephemeral=True
+            )
+
+    @timer.command(name="parse", description="Quick add timer from EVE Online reinforcement text")
+    async def parse_timer(
+        self,
+        ctx,
+        eve_text: Option(
+            str,
+            description="Paste EVE reinforcement text from target window",
+            required=True,
+        ),
+        system: Option(
+            str,
+            description="Solar system where the structure is located",
+            required=True,
+            autocomplete=solar_system_autocomplete,
+        ),
+        structure_type: Option(
+            str,
+            description="Type of structure (e.g., Astrahus, Fortizar, Keepstar)",
+            required=True,
+            autocomplete=structure_type_autocomplete,
+        ),
+        owner: Option(str, description="Owner corporation or alliance name", required=True),
+        timer_type: Option(
+            str,
+            description="Timer type (e.g., Armor, Hull, Final)",
+            required=True,
+            autocomplete=timer_type_autocomplete,
+        ),
+        objective: Option(
+            str,
+            description="Objective: Friendly, Hostile, or Neutral",
+            required=False,
+            default="Hostile",
+            autocomplete=objective_autocomplete,
+        ),
+        notes: Option(
+            str, description="Additional notes about the timer", required=False, default=""
+        ),
+    ):
+        """
+        Parse EVE Online reinforcement text and create a timer
+        """
+        await ctx.defer()
+
+        # Check permissions
+        try:
+            has_permission = await self.check_permissions(ctx)
+            if not has_permission:
+                allowed_channels = get_timer_channels()
+                channel_mention = ""
+                if allowed_channels:
+                    channel_mention = " in the designated timer channels"
+
+                await ctx.respond(
+                    "❌ You don't have permission to use this command." + channel_mention,
+                    ephemeral=True,
+                )
+                return
+        except Exception as e:
+            logger.error(f"Error checking permissions: {e}", exc_info=True)
+            await ctx.respond(
+                "❌ An error occurred while checking permissions. "
+                "Please contact an administrator.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            # Get authenticated user
+            auth_user = None
+            DiscordUser = None
+
+            try:
+                # Try to import DiscordUser model
+                try:
+                    from allianceauth.services.modules.discord.models import DiscordUser
+                except ImportError:
+                    # Fallback for different AllianceAuth versions
+                    try:
+                        from discord.models import DiscordUser
+                    except ImportError as ie:
+                        logger.error(f"Could not import DiscordUser model: {ie}")
+                        await ctx.respond(
+                            "❌ Discord integration not available. "
+                            "Please contact your administrator.",
+                            ephemeral=True,
+                        )
+                        return
+
+                logger.info(
+                    f"Looking up auth user for Discord ID: {ctx.author.id} ({ctx.author.name})"
+                )
+
+                # Get the Discord user from database
+                discord_user = DiscordUser.objects.select_related("user").get(uid=ctx.author.id)
+                auth_user = discord_user.user
+
+                logger.info(
+                    f"Successfully found auth user: {auth_user.username} (ID: {auth_user.id})"
+                )
+
+            except Exception as e:
+                # Check if it's a DoesNotExist error
+                if DiscordUser and e.__class__.__name__ == "DoesNotExist":
+                    logger.warning(
+                        f"No Discord link found for user {ctx.author.name} (ID: {ctx.author.id})"
+                    )
+                    await ctx.respond(
+                        "❌ **Your Discord account is not linked to AllianceAuth.**\n\n"
+                        "**To fix this:**\n"
+                        "1. Visit your AllianceAuth website\n"
+                        "2. Go to **Services**\n"
+                        "3. Find **Discord** and click **Activate**\n"
+                        "4. Complete the authorization\n"
+                        "5. Try this command again\n\n"
+                        f"Your Discord ID: `{ctx.author.id}`",
+                        ephemeral=True,
+                    )
+                    return
+                else:
+                    logger.error(
+                        f"Unexpected error looking up auth user for {ctx.author.id}: {e}",
+                        exc_info=True,
+                    )
+                    await ctx.respond(
+                        "❌ An error occurred while looking up your account. "
+                        "Please contact an administrator.",
+                        ephemeral=True,
+                    )
+                    return
+
+            if not auth_user:
+                logger.error(
+                    f"Discord user found but no auth user linked for "
+                    f"{ctx.author.name} (ID: {ctx.author.id})"
+                )
+                await ctx.respond(
+                    "❌ Your Discord is linked but there's no associated user account. "
+                    "Please contact an administrator.",
+                    ephemeral=True,
+                )
+                return
+
+            # Parse the EVE text
+            # Extract structure name (first line)
+            lines = eve_text.strip().split("\n")
+            structure_name = lines[0].strip() if lines else ""
+
+            # Extract date/time from "Reinforced until YYYY.MM.DD HH:MM:SS" pattern
+            # Pattern supports both dots and dashes in date
+            date_pattern = (
+                r"Reinforced until (\d{4})[.\-](\d{2})[.\-](\d{2})\s+(\d{2}):(\d{2}):(\d{2})"
+            )
+            date_match = re.search(date_pattern, eve_text, re.IGNORECASE)
+
+            if not date_match:
+                await ctx.respond(
+                    "❌ Could not parse reinforcement date/time from the text.\n"
+                    'Expected format: "Reinforced until YYYY.MM.DD HH:MM:SS"\n'
+                    "Example: `Reinforced until 2025.11.16 03:50:50`",
+                    ephemeral=True,
+                )
+                return
+
+            # Extract date components
+            year = int(date_match.group(1))
+            month = int(date_match.group(2))
+            day = int(date_match.group(3))
+            hour = int(date_match.group(4))
+            minute = int(date_match.group(5))
+            second = int(date_match.group(6))
+
+            # Create datetime object (EVE time is UTC)
+            try:
+                date = datetime(year, month, day, hour, minute, second, tzinfo=dt_timezone.utc)
+            except ValueError as ve:
+                await ctx.respond(
+                    f"❌ Invalid date/time values: {ve}\n"
+                    f"Parsed: {year}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}",
+                    ephemeral=True,
+                )
+                return
+
+            # Check if date is in the past
+            if date < datetime.now(dt_timezone.utc):
+                date_str = date.strftime("%Y-%m-%d %H:%M:%S")
+                await ctx.respond(
+                    f"⚠️ Warning: The parsed date ({date_str} UTC) is in the past!",
+                    ephemeral=True,
+                )
+                return
+
+            # Look up the solar system using the provided system parameter
+            try:
+                solar_system = EveSolarSystem.objects.get(name__iexact=system)
+            except EveSolarSystem.DoesNotExist:
+                # Try fuzzy match
+                systems = EveSolarSystem.objects.filter(name__icontains=system)[:5]
+                if systems.exists():
+                    system_list = ", ".join([s.name for s in systems])
+                    await ctx.respond(
+                        f"❌ Solar system '{system}' not found. Did you mean: {system_list}?",
+                        ephemeral=True,
+                    )
+                else:
+                    await ctx.respond(
+                        f"❌ Solar system '{system}' not found. " "Please check the system name.",
+                        ephemeral=True,
+                    )
+                return
+
+            # Validate and get structure type
+            try:
+                structure_type_obj = EveType.objects.get(
+                    name__iexact=structure_type, published=True
+                )
+            except EveType.DoesNotExist:
+                await ctx.respond(
+                    f"❌ Structure type '{structure_type}' not found. "
+                    "Please use the autocomplete suggestions.",
+                    ephemeral=True,
+                )
+                return
+
+            # Determine objective value
+            if hasattr(Timer, "Objective"):
+                objective_map = {}
+                for choice in Timer.Objective.choices:
+                    objective_map[choice[1].lower()] = choice[0]
+                objective_value = objective_map.get(
+                    objective.lower(),
+                    (Timer.Objective.HOSTILE if hasattr(Timer.Objective, "HOSTILE") else 2),
+                )
+            else:
+                objective_map = {"friendly": 1, "hostile": 2, "neutral": 3}
+                objective_value = objective_map.get(objective.lower(), 2)
+
+            # Determine timer type value
+            if hasattr(Timer, "Type"):
+                type_map = {}
+                for choice in Timer.Type.choices:
+                    type_map[choice[1].lower()] = choice[0]
+                timer_type_value = type_map.get(
+                    timer_type.lower(), list(type_map.values())[0] if type_map else 1
+                )
+            else:
+                # Use the string directly
+                timer_type_value = timer_type
+
+            # Build timer creation kwargs
+            timer_kwargs = {
+                "eve_solar_system": solar_system,
+                "structure_type": structure_type_obj,
+                "structure_name": structure_name or structure_type_obj.name,
+                "owner_name": owner,
+                "date": date,
+                "location_details": "",
+                "objective": objective_value,
+                "details_notes": notes,
+                "user": auth_user,
+            }
+
+            # Add timer_type if the field exists
+            try:
+                Timer._meta.get_field("timer_type")
+                timer_kwargs["timer_type"] = timer_type_value
+            except:
+                # Field doesn't exist, skip it
+                logger.debug("timer_type field doesn't exist in Timer model")
+                pass
+
+            # Create the timer
+            timer = Timer.objects.create(**timer_kwargs)
+
+            # Create success embed
+            embed = discord.Embed(
+                title="✅ Timer Created from EVE Text",
+                color=discord.Color.green(),
+                timestamp=datetime.utcnow(),
+            )
+
+            embed.add_field(name="System", value=solar_system.name, inline=True)
+            embed.add_field(name="Structure", value=structure_type_obj.name, inline=True)
+            embed.add_field(name="Type", value=timer_type, inline=True)
+            embed.add_field(name="Structure Name", value=structure_name, inline=False)
+            embed.add_field(name="Owner", value=owner, inline=True)
+            embed.add_field(name="Objective", value=objective.capitalize(), inline=True)
+            embed.add_field(name="Expires", value=f"<t:{int(date.timestamp())}:R>", inline=True)
+
+            if notes:
+                embed.add_field(name="Notes", value=notes, inline=False)
+
+            embed.set_footer(text=f"Created by {ctx.author.display_name}")
+
+            await ctx.respond(embed=embed)
+
+            logger.info(
+                f"Timer parsed and created by {ctx.author} ({auth_user.username}): "
+                f"{solar_system.name} - {structure_name} - {timer_type}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error parsing timer: {e}", exc_info=True)
+            await ctx.respond(
+                f"❌ An error occurred while parsing the timer: {str(e)}", ephemeral=True
             )
 
 
