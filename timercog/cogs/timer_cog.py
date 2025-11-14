@@ -4,7 +4,7 @@ Fixed version with improved error handling and authentication
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Optional
 
 import discord
@@ -441,6 +441,168 @@ class TimerCog(commands.Cog):
             logger.error(f"Error creating timer: {e}", exc_info=True)
             await ctx.respond(
                 f"❌ An error occurred while creating the timer: {str(e)}", ephemeral=True
+            )
+
+    @timer.command(name="list", description="List structure timers for a specific date")
+    async def list_timers(
+        self,
+        ctx,
+        date: Option(
+            str,
+            description="Date to show timers for (YYYY-MM-DD or YYYY.MM.DD format). Leave empty for today.",
+            required=False,
+            default="",
+        ),
+    ):
+        """
+        List all timers for a specific date (defaults to today)
+        """
+        await ctx.defer()
+
+        # Check permissions
+        try:
+            has_permission = await self.check_permissions(ctx)
+            if not has_permission:
+                allowed_channels = get_timer_channels()
+                channel_mention = ""
+                if allowed_channels:
+                    channel_mention = f" in the designated timer channels"
+
+                await ctx.respond(
+                    "❌ You don't have permission to use this command." + channel_mention,
+                    ephemeral=True,
+                )
+                return
+        except Exception as e:
+            logger.error(f"Error checking permissions: {e}", exc_info=True)
+            await ctx.respond(
+                "❌ An error occurred while checking permissions. "
+                "Please contact an administrator.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            # Parse the date parameter
+            target_date = None
+            if date:
+                # Try to parse the date in various formats
+                date_str = date.strip()
+                for date_format in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"]:
+                    try:
+                        parsed = datetime.strptime(date_str, date_format)
+                        target_date = timezone.make_aware(parsed, timezone.get_current_timezone())
+                        break
+                    except ValueError:
+                        continue
+
+                if not target_date:
+                    await ctx.respond(
+                        "❌ Invalid date format. Please use YYYY-MM-DD or YYYY.MM.DD format (e.g., 2025-11-14 or 2025.11.14)",
+                        ephemeral=True,
+                    )
+                    return
+            else:
+                # Use today's date
+                target_date = timezone.now()
+
+            # Get start and end of the target day
+            start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+            # Query timers for this date range
+            timers = Timer.objects.filter(
+                date__gte=start_of_day,
+                date__lte=end_of_day
+            ).select_related(
+                'eve_solar_system',
+                'structure_type'
+            ).order_by('date')
+
+            if not timers.exists():
+                date_display = start_of_day.strftime("%Y.%m.%d")
+                await ctx.respond(
+                    f"No timers found for **{date_display}**",
+                    ephemeral=True,
+                )
+                return
+
+            # Format the output
+            date_display = start_of_day.strftime("%Y.%m.%d")
+            output_lines = [f"**Current timers for {date_display}:**\n"]
+
+            for timer in timers:
+                # Get structure type name
+                structure_name = timer.structure_type.name if timer.structure_type else "Unknown"
+
+                # Get timer type if available
+                timer_type_display = ""
+                if hasattr(timer, 'timer_type') and timer.timer_type:
+                    if hasattr(Timer, 'Type'):
+                        # Get the display value from choices
+                        try:
+                            timer_type_display = f" - {dict(Timer.Type.choices).get(timer.timer_type, str(timer.timer_type))}"
+                        except:
+                            timer_type_display = f" - {timer.timer_type}"
+                    else:
+                        timer_type_display = f" - {timer.timer_type}"
+
+                # Build the owner/location info
+                location_info = timer.owner_name if timer.owner_name else ""
+                if timer.location_details:
+                    location_info += f" - {timer.location_details}"
+
+                # Format: Structure: System - Owner - Location -> Date Time or in X hours
+                # Convert to UTC (EVE Time) for display
+                timer_utc = timer.date.astimezone(dt_timezone.utc) if timer.date.tzinfo else timer.date
+                eve_time_str = timer_utc.strftime("%Y.%m.%d %H:%M:%S")
+
+                # Discord relative timestamp (shows in user's local timezone automatically)
+                timestamp_rel = f"<t:{int(timer.date.timestamp())}:R>"
+
+                output_lines.append(
+                    f"**{structure_name}**: {timer.eve_solar_system.name}{timer_type_display} -> "
+                    f"{eve_time_str} ET or {timestamp_rel}"
+                )
+
+                if location_info:
+                    output_lines.append(f"  _{location_info}_")
+
+            # Split into multiple messages if too long
+            full_message = "\n".join(output_lines)
+
+            if len(full_message) <= 2000:
+                await ctx.respond(full_message)
+            else:
+                # Split into chunks
+                chunks = []
+                current_chunk = output_lines[0] + "\n"
+
+                for line in output_lines[1:]:
+                    if len(current_chunk) + len(line) + 1 <= 2000:
+                        current_chunk += line + "\n"
+                    else:
+                        chunks.append(current_chunk)
+                        current_chunk = line + "\n"
+
+                if current_chunk:
+                    chunks.append(current_chunk)
+
+                # Send first chunk as response
+                await ctx.respond(chunks[0])
+
+                # Send remaining chunks as follow-ups
+                for chunk in chunks[1:]:
+                    await ctx.send(chunk)
+
+            logger.info(
+                f"Timer list requested by {ctx.author} for date: {date_display}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error listing timers: {e}", exc_info=True)
+            await ctx.respond(
+                f"❌ An error occurred while listing timers: {str(e)}", ephemeral=True
             )
 
 
