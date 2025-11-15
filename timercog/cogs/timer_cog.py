@@ -776,6 +776,7 @@ class TimerCog(commands.Cog):
 
             extracted_system = None
             structure_name_remainder = first_line
+            is_jump_gate = False
 
             # Check for Ansiblex format first (SYSTEM » DEST)
             if " » " in first_line or " \u00bb " in first_line:
@@ -785,6 +786,7 @@ class TimerCog(commands.Cog):
                     parts = first_line.split(" \u00bb ", 1)  # Unicode version
                 extracted_system = parts[0].strip()
                 structure_name_remainder = parts[1].strip() if len(parts) > 1 else first_line
+                is_jump_gate = True
             else:
                 # Regular format: split by " - " (space-dash-space)
                 parts = first_line.split(" - ", 1)
@@ -866,6 +868,10 @@ class TimerCog(commands.Cog):
                     ephemeral=True,
                 )
                 return
+
+            # Override structure type if it's a jump gate
+            if is_jump_gate:
+                structure_type = "Ansiblex Jump Gate"
 
             # Validate and get structure type
             try:
