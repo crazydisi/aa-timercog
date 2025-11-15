@@ -769,15 +769,30 @@ class TimerCog(commands.Cog):
                 )
                 return
 
-            # Extract system name from the first part (before " - " separator)
-            # Example: "6U-MFQ - NF - Fort Enterprise" -> system: "6U-MFQ", rest: "NF - Fort Enterprise"
-            # Example: "M-NP5O - VIII - 3 - For Sale" -> system: "M-NP5O", rest: "VIII - 3 - For Sale"
-            # Split by " - " (space-dash-space) to preserve system names with dashes like "6U-MFQ"
-            parts = first_line.split(" - ", 1)
-            extracted_system = parts[0].strip() if parts else first_line
+            # Extract system name from the first part
+            # Two formats:
+            # 1. Regular structures: "SYSTEM - Structure Name" (e.g., "6U-MFQ - NF - Fort Enterprise")
+            # 2. Ansiblex Jump Gates: "SYSTEM » DEST - DEST" (e.g., "6A-FUY » 5B-YDD - 5B-YDD")
+
+            extracted_system = None
+            structure_name_remainder = first_line
+
+            # Check for Ansiblex format first (SYSTEM » DEST)
+            if " » " in first_line or " \u00bb " in first_line:
+                # Split by » to get the system
+                parts = first_line.split(" » ", 1)
+                if len(parts) < 2:
+                    parts = first_line.split(" \u00bb ", 1)  # Unicode version
+                extracted_system = parts[0].strip()
+                structure_name_remainder = parts[1].strip() if len(parts) > 1 else first_line
+            else:
+                # Regular format: split by " - " (space-dash-space)
+                parts = first_line.split(" - ", 1)
+                extracted_system = parts[0].strip()
+                structure_name_remainder = parts[1].strip() if len(parts) > 1 else ""
 
             # Use the extracted system name
-            system_to_use = extracted_system
+            system_to_use = extracted_system if extracted_system else first_line
 
             # Validate the solar system against the database
             solar_system = None
@@ -803,12 +818,10 @@ class TimerCog(commands.Cog):
                     )
                 return
 
-            # Remove system name from structure name
-            # If we found the system, remove it from the beginning of the first line
-            structure_name = first_line
-            if parts and len(parts) > 1 and solar_system.name.upper() == parts[0].strip().upper():
-                # Remove the system name and the dash from the structure name
-                structure_name = parts[1].strip()
+            # Set structure name (system already removed by extraction logic)
+            # For Ansiblex: "6A-FUY » 5B-YDD - 5B-YDD" becomes "5B-YDD - 5B-YDD"
+            # For regular: "6U-MFQ - NF - Fort Enterprise" becomes "NF - Fort Enterprise"
+            structure_name = structure_name_remainder if structure_name_remainder else first_line
 
             # Extract date/time from "Reinforced until YYYY.MM.DD HH:MM:SS" pattern
             # Pattern supports both dots and dashes in date
