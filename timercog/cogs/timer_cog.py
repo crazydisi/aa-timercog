@@ -631,7 +631,7 @@ class TimerCog(commands.Cog):
         ),
         structure_type: Option(
             str,
-            description="Structure type (auto-filled for jump gates)",
+            description="Structure type (auto-filled for jump bridges)",
             required=False,
             default="",
             autocomplete=structure_type_autocomplete,
@@ -773,7 +773,7 @@ class TimerCog(commands.Cog):
             # Extract system name from the first part
             # Two formats:
             # 1. Regular structures: "SYSTEM - Structure Name" (e.g., "6U-MFQ - NF - Fort Enterprise")
-            # 2. Ansiblex Jump Gates: "SYSTEM » DEST - DEST" (e.g., "6A-FUY » 5B-YDD - 5B-YDD")
+            # 2. Ansiblex Jump Bridges: "SYSTEM » DEST - DEST" (e.g., "6A-FUY » 5B-YDD - 5B-YDD")
 
             extracted_system = None
             structure_name_remainder = first_line
@@ -870,9 +870,9 @@ class TimerCog(commands.Cog):
                 )
                 return
 
-            # Override structure type if it's a jump gate
+            # Override structure type if it's a jump bridge
             if is_jump_gate:
-                structure_type = "Ansiblex Jump Gate"
+                structure_type = "Ansiblex Jump Bridge"
             elif not structure_type or not structure_type.strip():
                 # If not a jump gate and no structure type provided, error
                 await ctx.respond(
