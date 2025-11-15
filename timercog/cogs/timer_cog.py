@@ -631,8 +631,9 @@ class TimerCog(commands.Cog):
         ),
         structure_type: Option(
             str,
-            description="Type of structure (e.g., Astrahus, Fortizar, Keepstar)",
-            required=True,
+            description="Structure type (auto-filled for jump gates)",
+            required=False,
+            default="",
             autocomplete=structure_type_autocomplete,
         ),
         owner: Option(str, description="Owner corporation or alliance name", required=True),
@@ -872,6 +873,14 @@ class TimerCog(commands.Cog):
             # Override structure type if it's a jump gate
             if is_jump_gate:
                 structure_type = "Ansiblex Jump Gate"
+            elif not structure_type or not structure_type.strip():
+                # If not a jump gate and no structure type provided, error
+                await ctx.respond(
+                    "❌ Structure type is required for non-jump-gate structures. "
+                    "Please provide a structure type.",
+                    ephemeral=True,
+                )
+                return
 
             # Validate and get structure type
             try:
