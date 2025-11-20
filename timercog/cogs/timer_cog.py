@@ -515,16 +515,18 @@ class TimerCog(commands.Cog):
             # Get date range
             if target_date:
                 # If date provided, use full calendar day (midnight to midnight)
-                start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                start_time = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_time = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
             else:
-                # If no date provided, use next 24 hours from now
-                start_of_day = timezone.now()
-                end_of_day = start_of_day + timedelta(hours=24)
+                # If no date provided, use next 24 hours from current moment
+                start_time = timezone.now()
+                end_time = start_time + timedelta(hours=24)
 
             # Query timers for this date range (exclude friendly timers)
+            # date__gte means timer.date >= start_time (future timers only)
+            # date__lte means timer.date <= end_time (within next 24h)
             timers = (
-                Timer.objects.filter(date__gte=start_of_day, date__lte=end_of_day)
+                Timer.objects.filter(date__gte=start_time, date__lte=end_time)
                 .select_related("eve_solar_system", "structure_type")
                 .order_by("date")
             )
@@ -539,7 +541,7 @@ class TimerCog(commands.Cog):
 
             if not timers.exists():
                 if target_date:
-                    date_display = start_of_day.strftime("%Y.%m.%d")
+                    date_display = start_time.strftime("%Y-%m-%d")
                     await ctx.respond(
                         f"No timers found for **{date_display}**",
                         ephemeral=True,
@@ -553,7 +555,7 @@ class TimerCog(commands.Cog):
 
             # Format the output
             if target_date:
-                date_display = start_of_day.strftime("%Y.%m.%d")
+                date_display = start_time.strftime("%Y-%m-%d")
                 output_lines = [f"**Current timers for {date_display}:**\n"]
             else:
                 output_lines = [f"**Current timers for the next 24 hours:**\n"]
@@ -587,7 +589,7 @@ class TimerCog(commands.Cog):
                 timer_utc = (
                     timer.date.astimezone(dt_timezone.utc) if timer.date.tzinfo else timer.date
                 )
-                eve_time_str = timer_utc.strftime("%Y.%m.%d %H:%M:%S")
+                eve_time_str = timer_utc.strftime("%Y-%m-%d %H:%M:%S")
 
                 # Discord relative timestamp (shows in user's local timezone automatically)
                 timestamp_rel = f"<t:{int(timer.date.timestamp())}:R>"
