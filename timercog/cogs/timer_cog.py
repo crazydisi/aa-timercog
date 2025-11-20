@@ -445,7 +445,7 @@ class TimerCog(commands.Cog):
                 f"❌ An error occurred while creating the timer: {str(e)}", ephemeral=True
             )
 
-    @timer.command(name="list", description="List structure timers for a specific date")
+    @timer.command(name="list", description="List structure timers for next 24h or specific date")
     async def list_timers(
         self,
         ctx,
@@ -453,14 +453,14 @@ class TimerCog(commands.Cog):
             str,
             description=(
                 "Date to show timers for (YYYY-MM-DD or YYYY.MM.DD format). "
-                "Leave empty for today."
+                "Leave empty for next 24h."
             ),
             required=False,
             default="",
         ),
     ):
         """
-        List all timers for a specific date (defaults to today)
+        List all timers for next 24 hours or a specific date
         """
         await ctx.defer()
 
@@ -509,12 +509,18 @@ class TimerCog(commands.Cog):
                     )
                     return
             else:
-                # Use today's date
-                target_date = timezone.now()
+                # Use next 24 hours from now
+                target_date = None
 
-            # Get start and end of the target day
-            start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            # Get date range
+            if target_date:
+                # If date provided, use full calendar day (midnight to midnight)
+                start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            else:
+                # If no date provided, use next 24 hours from now
+                start_of_day = timezone.now()
+                end_of_day = start_of_day + timedelta(hours=24)
 
             # Query timers for this date range (exclude friendly timers)
             timers = (
@@ -532,16 +538,25 @@ class TimerCog(commands.Cog):
                 timers = timers.exclude(objective=1)
 
             if not timers.exists():
-                date_display = start_of_day.strftime("%Y.%m.%d")
-                await ctx.respond(
-                    f"No timers found for **{date_display}**",
-                    ephemeral=True,
-                )
+                if target_date:
+                    date_display = start_of_day.strftime("%Y.%m.%d")
+                    await ctx.respond(
+                        f"No timers found for **{date_display}**",
+                        ephemeral=True,
+                    )
+                else:
+                    await ctx.respond(
+                        "No timers found for **the next 24 hours**",
+                        ephemeral=True,
+                    )
                 return
 
             # Format the output
-            date_display = start_of_day.strftime("%Y.%m.%d")
-            output_lines = [f"**Current timers for {date_display}:**\n"]
+            if target_date:
+                date_display = start_of_day.strftime("%Y.%m.%d")
+                output_lines = [f"**Current timers for {date_display}:**\n"]
+            else:
+                output_lines = [f"**Current timers for the next 24 hours:**\n"]
 
             for timer in timers:
                 # Get structure type name
@@ -612,7 +627,10 @@ class TimerCog(commands.Cog):
                 for chunk in chunks[1:]:
                     await ctx.send(chunk)
 
-            logger.info(f"Timer list requested by {ctx.author} for date: {date_display}")
+            if target_date:
+                logger.info(f"Timer list requested by {ctx.author} for date: {date_display}")
+            else:
+                logger.info(f"Timer list requested by {ctx.author} for next 24 hours")
 
         except Exception as e:
             logger.error(f"Error listing timers: {e}", exc_info=True)
