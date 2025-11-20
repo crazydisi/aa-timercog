@@ -541,7 +541,7 @@ class TimerCog(commands.Cog):
 
             if not timers.exists():
                 if target_date:
-                    date_display = start_time.strftime("%Y.%m.%d")
+                    date_display = start_time.strftime("%Y-%m-%d")
                     await ctx.respond(
                         f"No timers found for **{date_display}**",
                         ephemeral=True,
@@ -555,7 +555,7 @@ class TimerCog(commands.Cog):
 
             # Format the output
             if target_date:
-                date_display = start_time.strftime("%Y.%m.%d")
+                date_display = start_time.strftime("%Y-%m-%d")
                 output_lines = [f"**Current timers for {date_display}:**\n"]
             else:
                 output_lines = [f"**Current timers for the next 24 hours:**\n"]
@@ -589,7 +589,7 @@ class TimerCog(commands.Cog):
                 timer_utc = (
                     timer.date.astimezone(dt_timezone.utc) if timer.date.tzinfo else timer.date
                 )
-                eve_time_str = timer_utc.strftime("%Y.%m.%d %H:%M:%S")
+                eve_time_str = timer_utc.strftime("%Y-%m-%d %H:%M:%S")
 
                 # Discord relative timestamp (shows in user's local timezone automatically)
                 timestamp_rel = f"<t:{int(timer.date.timestamp())}:R>"
