@@ -14,6 +14,7 @@ from discord import AutocompleteContext, Option, SlashCommandGroup
 from discord.ext import commands
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db.models import Q
 from django.utils import timezone
 from eveuniverse.models import EveSolarSystem, EveType
 from structuretimers.models import Timer
@@ -531,13 +532,41 @@ class TimerCog(commands.Cog):
                 .order_by("date")
             )
 
-            # Filter out friendly timers (objective = 1)
-            # Check if the Timer model has an Objective enum
-            if hasattr(Timer, "Objective") and hasattr(Timer.Objective, "FRIENDLY"):
-                timers = timers.exclude(objective=Timer.Objective.FRIENDLY)
+            # Filter timers: Show all hostile timers + friendly/neutral with Armor/Hull/Final type
+            # Define timer types to include for friendly/neutral (Armor, Hull, Final)
+            combat_timer_types = []
+            if hasattr(Timer, "Type"):
+                for choice in Timer.Type.choices:
+                    choice_name = choice[1].lower()
+                    if choice_name in ["armor", "hull", "final"]:
+                        combat_timer_types.append(choice[0])
+
+            # Build the filter
+            if hasattr(Timer, "Objective") and hasattr(Timer.Objective, "HOSTILE"):
+                hostile_obj = Timer.Objective.HOSTILE
+                friendly_obj = getattr(Timer.Objective, "FRIENDLY", 1)
+                neutral_obj = getattr(Timer.Objective, "NEUTRAL", 3)
+
+                if combat_timer_types:
+                    # Show: hostile OR (friendly/neutral with combat timer type)
+                    timers = timers.filter(
+                        Q(objective=hostile_obj)
+                        | Q(
+                            objective__in=[friendly_obj, neutral_obj],
+                            timer_type__in=combat_timer_types,
+                        )
+                    )
+                else:
+                    # No combat timer types found, just show hostile
+                    timers = timers.filter(objective=hostile_obj)
             else:
-                # Fallback: assume friendly = 1
-                timers = timers.exclude(objective=1)
+                # Fallback: assume hostile=2, friendly=1, neutral=3
+                if combat_timer_types:
+                    timers = timers.filter(
+                        Q(objective=2) | Q(objective__in=[1, 3], timer_type__in=combat_timer_types)
+                    )
+                else:
+                    timers = timers.filter(objective=2)
 
             if not timers.exists():
                 if target_date:
